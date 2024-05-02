@@ -188,7 +188,7 @@ bool NonRigidIcp::Init(bool check_self_itersection, float angle_rad_th,
 
   // Init correspondences
   m_corresp.resize(m_src_norm->vertices().size());
-  m_target.resize(m_corresp.size());
+  m_target.resize(m_corresp.size(), Eigen::Vector3f::Zero());
   m_weights_per_node.resize(m_corresp.size(), 1.0);
 
   // Init KD Tree
@@ -210,6 +210,16 @@ bool NonRigidIcp::FindCorrespondences() {
   const std::vector<Eigen::Vector3f>& current_n =
       m_src_norm_deformed->normals();
   auto point2plane_corresp_func = [&](size_t idx) {
+
+  // TODO: Without these lines, m_ignore_vids may exhibit large movements if it
+  // has valid correspondence...Why?
+#if 1
+    if (m_ignore_vids.find(static_cast<uint32_t>(idx)) != m_ignore_vids.end()) {
+      m_weights_per_node[idx] = 0.0;
+      return;
+    }
+#endif
+
     auto corresps = m_corresp_finder->FindKnn(current[idx], m_corresp_nn_num);
 
     Corresp c = corresps[0];

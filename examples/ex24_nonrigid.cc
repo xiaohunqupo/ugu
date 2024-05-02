@@ -299,7 +299,7 @@ void TestFace2() {
 
   double max_alpha = 2.0;
   double min_alpha = 0.1;
-  double gamma = 1.0;
+  double gamma = 100.0; // Large gamma for smooth boundary between movable and static regions
   int step = 10;
   ugu::MeshPtr deformed;
   for (int i = 1; i <= step; ++i) {
