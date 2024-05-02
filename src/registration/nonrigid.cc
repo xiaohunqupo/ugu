@@ -459,6 +459,7 @@ bool NonRigidIcp::Registrate(double alpha, double gamma, int max_iter,
     LOGI("solve(): %f ms\n", timer.elapsed_msec());
 
     timer.Start();
+
     Eigen::Matrix3Xd Xt = X.transpose();
     const Eigen::Matrix3Xd identity = Eigen::Matrix3Xd::Identity(3, 4);
     std::vector<Eigen::Vector3f> updated_vertices;
@@ -467,9 +468,10 @@ bool NonRigidIcp::Registrate(double alpha, double gamma, int max_iter,
 
       // TODO: Add "soft" option. Increase stiffness?
       // For ignore_vids, set identity -> keep original vertex position
-      if (m_ignore_vids.find(static_cast<uint32_t>(i)) != m_ignore_vids.end()) {
-        Xt.block<3, 4>(0, 4 * i) = identity;
-      }
+      // if (m_ignore_vids.find(static_cast<uint32_t>(i)) !=
+      // m_ignore_vids.end()) {
+      //  Xt.block<3, 4>(0, 4 * i) = identity;
+      //}
 
       Eigen::Vector4d point(vtx[0], vtx[1], vtx[2], 1.0);
       Eigen::Vector3d result = Xt.block<3, 4>(0, 4 * i) * point;
