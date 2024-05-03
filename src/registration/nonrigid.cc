@@ -210,15 +210,11 @@ bool NonRigidIcp::FindCorrespondences() {
   const std::vector<Eigen::Vector3f>& current_n =
       m_src_norm_deformed->normals();
   auto point2plane_corresp_func = [&](size_t idx) {
-
-  // TODO: Without these lines, m_ignore_vids may exhibit large movements if it
-  // has valid correspondence...Why?
-#if 1
+    // For ignore-vertices, just set weight=0
     if (m_ignore_vids.find(static_cast<uint32_t>(idx)) != m_ignore_vids.end()) {
       m_weights_per_node[idx] = 0.0;
       return;
     }
-#endif
 
     auto corresps = m_corresp_finder->FindKnn(current[idx], m_corresp_nn_num);
 
@@ -292,12 +288,6 @@ bool NonRigidIcp::Registrate(double alpha, double gamma, int max_iter,
                  [&](const Eigen::Vector3f& v) {
                    return v.cwiseProduct(m_org2norm_scale);
                  });
-
-  // Set weight = 0 for ignore vertices
-  for (const auto& vid : m_ignore_vids) {
-    m_weights_per_node[vid] = 0.0;
-  }
-
   Timer<> timer_mat;
   timer_mat.Start();
   // 1.alpha_M_G
@@ -406,7 +396,7 @@ bool NonRigidIcp::Registrate(double alpha, double gamma, int max_iter,
     Eigen::MatrixX3d B = Eigen::MatrixX3d::Zero(4 * m + n + l, 3);
     for (IndexType i = 0; i < n; ++i) {
       double weight = m_weights_per_node[i];
-      auto& target_pos = m_target[i];
+      auto target_pos = m_target[i];
 #ifdef UGU_NICP_ADD_EQ_FOR_WEIGHT_ZERO
       // If weight is 0, set the same position to target
       if (weight == 0.0) {
