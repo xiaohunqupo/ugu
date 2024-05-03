@@ -212,13 +212,12 @@ void TestFace2() {
   std::string src_obj_path = src_dir + "ict-facekit_tri.obj";
   ugu::Mesh src_mesh;
   src_mesh.LoadObj(src_obj_path, src_dir);
-  ugu::ObjMaterial move_mat;
   std::set<uint32_t> ignore_face_ids;
   for (size_t mat_id = 0; mat_id < src_mesh.materials().size(); mat_id++) {
     const auto& mat = src_mesh.materials()[mat_id];
-    if (mat.name.find("Face") != std::string::npos) {
-      move_mat = mat;
-      // break;
+    if (mat.name.find("Face") != std::string::npos ||
+        mat.name.find("EarBack") != std::string::npos) {
+      // DO NOTHING
     } else {
       for (const auto& fid : src_mesh.face_indices_per_material()[mat_id]) {
         ignore_face_ids.insert(static_cast<uint32_t>(fid));
@@ -281,26 +280,27 @@ void TestFace2() {
   double beta = 1.0;
   std::vector<double> betas(src_landmarks.size(), beta);
   // Nose
-  betas[9] = 100;
+  betas[9] = 10;
   nicp.SetSrcLandmarks(src_landmarks, betas);
   nicp.SetDst(dst_mesh);
   nicp.SetDstLandmarkPositions(dst_landmark_positions);
 
-  float start_dist = 0.05f;
-  float end_dist = 0.025f;
+  float start_dist = 0.075f;
+  float end_dist = 0.05f;
   nicp.SetCorrespDistTh(start_dist);
   nicp.SetIgnoreFaceIds(ignore_face_ids);
 
   bool keep_src_boundary_as_possible = false;
-  float start_deg = 45.f;
-  float end_deg = 30.f;
+  float start_deg = 60.f;
+  float end_deg = 45.f;
   nicp.Init(true, ugu::radians(start_deg), false,
             keep_src_boundary_as_possible);
 
   double max_alpha = 2.0;
   double min_alpha = 0.1;
-  double gamma = 100.0; // Large gamma for smooth boundary between movable and static regions
-  int step = 10;
+  double gamma = 10.0;  // Large gamma for smooth boundary between
+                        // movable and static regions
+  int step = 20;
   ugu::MeshPtr deformed;
   for (int i = 1; i <= step; ++i) {
     double ratio = static_cast<double>(i) / static_cast<double>(step);
