@@ -3,7 +3,6 @@ import os
 import os
 this_abs_path = os.path.abspath(os.path.join(os.path.abspath(__file__), ".."))
 sys.path.insert(0, os.path.abspath(os.path.join(this_abs_path, "../lib/Release")))
-# print(os.listdir(sys.path[0]))
 import ugu_py
 import numpy as np
 import json
@@ -106,7 +105,6 @@ def load_lmk(path, verts, indices):
 
 src = obj_io.loadObj("../data/face/ict-facekit_tri.obj")
 dst = obj_io.loadObj("../data/face/max-planck.obj")
-
 src_fids, src_barys, src_lmks = load_lmk(os.path.join(this_abs_path, "../data/face/ict-facekit_lmk.json"), src.verts, src.indices)
 dst_fids, dst_barys, dst_lmks = load_lmk(os.path.join(this_abs_path, "../data/face/max-planck_lmk.json"), dst.verts, dst.indices)
 
@@ -121,13 +119,12 @@ obj_io.saveObj("umeyama.obj", src)
 lmk_w = np.ones(len(src_fids), dtype=np.float32)
 lmk_w[9] = 10.0
 
-src_movable_face_ids = []
-with open(os.path.join(this_abs_path, "../data/face/ict-facekit_movable_faces.txt"), "r") as fp:
-    for line in fp:
-        src_movable_face_ids.append(int(line.rstrip()))
-src_ignore_face_ids = set(range(len(src.indices)))
-for fid in src_movable_face_ids:
-    src_ignore_face_ids.remove(fid)
+src_ignore_face_ids = set()
+for k, v in src.mtl_per_faces.items():
+    if k != "M_Face" and k != "M_EarBack":
+        for idx in v:
+            src_ignore_face_ids.add(idx)
+
 src_ignore_face_ids = np.array(list(src_ignore_face_ids), dtype=np.int32)
 params = ugu_py.NonrigidIcpParams(True, False, False, 0.075, 0.05, 60.0, 45.0, 2.0, 0.1, 10.0, 20, 10)
 deformed_verts = ugu_py.NonrigidIcp(src_verts, src.indices, src_fids, src_barys, lmk_w, src_ignore_face_ids, dst.verts, dst.indices, dst_lmks, params)

@@ -1,6 +1,34 @@
 from dataclasses import dataclass, field
 from typing import TypeAlias
 import numpy as np
+from pathlib import Path
+
+
+@dataclass
+class ObjMtl:
+    name: str = field(default="default_mat_objio")
+    Ka: list = field(default_factory=list)
+    Kd: list = field(default_factory=list)
+    Ks: list = field(default_factory=list)
+    Tr: float = 1.0
+    illum: int = 2
+    Ns: float = 0.0
+    map_Kd: str | None = None
+
+    def to_mtl_str(self):
+        mtl_str = f"newmtl {self.name}\n"
+        if len(self.Ka) == 3:
+            mtl_str += f"Ka {self.Ka[0]} {self.Ka[1]} {self.Ka[2]}\n"
+        if len(self.Kd) == 3:
+            mtl_str += f"Kd {self.Kd[0]} {self.Kd[1]} {self.Kd[2]}\n"
+        if len(self.Ks) == 3:
+            mtl_str += f"Ka {self.Ks[0]} {self.Ks[1]} {self.Ks[2]}\n"
+        mtl_str += f"Tr {self.Tr}\n"
+        mtl_str += f"Tr {self.illum}\n"
+        mtl_str += f"Tr {self.Ns}\n"
+        if self.map_Kd is not None and len(self.map_Kd) > 0:
+            mtl_str += f"map_Kd {self.map_Kd}\n"
+        return mtl_str
 
 
 @dataclass
@@ -12,8 +40,9 @@ class ObjMesh:
     uv_indices: np.array = field(default_factory=np.array)
     normal_indices: np.array = field(default_factory=np.array)
     vert_colors: np.array = field(default_factory=np.array)
-    mtl_file: str = field(default_factory=str)
-    mtl_names: list[str] = field(default_factory=list)
+    mtl_path: str = field(default_factory=str)
+    mtls : list[ObjMtl] = field(default_factory=[ObjMtl])
+    mtl_per_faces: dict = field(default_factory=dict)
 
     def eunsureNumpy(self):
         for k, v in self.__dict__.items():
@@ -85,6 +114,42 @@ ObjIoVec: TypeAlias = list[float] | list[list[float]] | np.ndarray
 ObjIoIndices: TypeAlias = list[int] | list[list[int]] | np.ndarray
 
 
+def loadMtls(mtl_path: str):
+    mtls = []
+    with open(mtl_path, "r") as fp:
+        for line in fp:
+            line = line.strip()
+            if line.startswith("#"):
+                continue
+            splitted = line.split(" ")
+            if len(splitted) < 2:
+                continue
+            start = splitted[0]
+            data = splitted[1:]
+
+            def to_float(data):
+                return [float(x) for x in data]
+
+            if start == "newmtl":
+                mat = ObjMtl(name=data[0])
+                mtls.append(mat)
+            elif start == "Ka":
+                mtls[-1].Ka = to_float(data)
+            elif start == "Kd":
+                mtls[-1].Kd = to_float(data)
+            elif start == "Ks":
+                mtls[-1].Ks = to_float(data)
+            elif start == "Tr":
+                mtls[-1].Tr = to_float(data)[0]
+            elif start == "illum":
+                mtls[-1].illum = int(to_float(data)[0])
+            elif start == "Ns":
+                mtls[-1].Ns = to_float(data)[0]
+            elif start == "map_Kd":
+                mtls[-1].map_Kd = data[0]
+    return mtls
+
+
 def loadObjSimple(obj_path: str):
     num_verts = 0
     num_uvs = 0
@@ -97,8 +162,12 @@ def loadObjSimple(obj_path: str):
     indices = []
     uv_indices = []
     normal_indices = []
-    mtl_file = None
-    mtl_names = []
+    base_dir = Path(obj_path).parent
+    mtl_path = None
+    mtls = []
+    mtl_file_name = None
+    mtl_per_faces = {}
+    current_mtl_name = None
     for line in open(obj_path, "r"):
         vals = line.split()
         if len(vals) == 0:
@@ -146,15 +215,20 @@ def loadObjSimple(obj_path: str):
                 valid_face = True
             if valid_face:
                 num_indices += 1
+                if current_mtl_name is not None:
+                    mtl_per_faces[current_mtl_name].append(num_indices - 1)
         if vals[0] == "mtllib":
-            mtl_file = vals[1]
+            mtl_file_name = vals[1]
+            mtl_path = str((base_dir / mtl_file_name).expanduser().absolute())
         if vals[0] == "usemtl":
-            mtl_names.append(vals[1])
-    if len(mtl_names) > 1:
-        print(
-            "The first material will be used"
-            f"but there are {len(mtl_names)} materials"
-        )
+            current_mtl_name = vals[1]
+            if current_mtl_name not in mtl_per_faces.keys():
+                mtl_per_faces[current_mtl_name] = []
+    if mtl_path is not None:
+        mtls = loadMtls(str(mtl_path))
+    else:
+        mtls = [ObjMtl()]
+        mtl_per_faces[mtls[0].name] = list(range(len(indices)))
     return (
         verts,
         uvs,
@@ -163,8 +237,9 @@ def loadObjSimple(obj_path: str):
         uv_indices,
         normal_indices,
         vert_colors,
-        mtl_file,
-        mtl_names,
+        mtl_path,
+        mtls,
+        mtl_per_faces,
     )
 
 
@@ -177,6 +252,13 @@ def loadObj(obj_path: str, is_numpy: bool = True):
     return mesh
 
 
+def saveMtl(mtl_path: str, mtls : list[ObjMtl]):
+    with open(mtl_path, "w") as fp:
+        for mtl in mtls:
+            fp.write(mtl.to_mtl_str())
+            fp.write("\n")
+
+
 def saveObjSimple(
     obj_path: str,
     verts: ObjIoVec,
@@ -186,8 +268,9 @@ def saveObjSimple(
     uv_indices: ObjIoVec = [],
     normal_indices: ObjIoVec = [],
     vert_colors: ObjIoVec = [],
-    mat_file: str = None,
-    mat_name: str = None,
+    mtl_path: str = "",
+    mtls : list[ObjMtl] = [],
+    mtl_per_faces: dict = {}
 ):
     f_out = open(obj_path, "w")
     f_out.write("####\n")
@@ -196,8 +279,6 @@ def saveObjSimple(
     f_out.write("# Faces: %s\n" % (len(indices)))
     f_out.write("#\n")
     f_out.write("####\n")
-    if mat_file is not None:
-        f_out.write("mtllib " + mat_file + "\n")
     for vi, v in enumerate(verts):
         vertstr = "v %s %s %s" % (v[0], v[1], v[2])
         if len(vert_colors) > 0:
@@ -214,9 +295,15 @@ def saveObjSimple(
         nStr = "vn %s %s %s\n" % (n[0], n[1], n[2])
         f_out.write(nStr)
     f_out.write("# %s normals\n\n" % (len(normals)))
-    if mat_name is not None:
-        f_out.write("usemtl " + mat_name + "\n")
+    current_mtl = None
+    face_mtl = [None for _ in range(len(indices))]
+    for k, v in mtl_per_faces.items():
+        for idx in v:
+            face_mtl[idx] = k
     for fi, v_index in enumerate(indices):
+        if face_mtl[fi] is not None and current_mtl != face_mtl[fi]:
+            f_out.write("usemtl " + face_mtl[fi] + "\n")
+            current_mtl = face_mtl[fi]
         fStr = "f"
         for fvi, v_indexi in enumerate(v_index):
             fStr += " %s" % (v_indexi + 1)
@@ -230,13 +317,13 @@ def saveObjSimple(
     f_out.write("# End of File\n")
     f_out.close()
 
+    if mtl_path != "":
+        saveMtl(mtl_path, mtls)
 
-def saveObj(obj_path: str, mesh: ObjMesh):
-    if len(mesh.mtl_names) > 1:
-        print(
-            "The first material will be used"
-            f"but there are {len(mesh.mtl_names)} materials"
-        )
+
+def saveObj(obj_path: str, mesh: ObjMesh, mtl_path: str = ""):
+    if mtl_path == "":
+        mtl_path = str(Path(obj_path).parent / (Path(obj_path).stem + ".mtl"))
     saveObjSimple(
         obj_path,
         mesh.verts,
@@ -246,8 +333,9 @@ def saveObj(obj_path: str, mesh: ObjMesh):
         mesh.uv_indices,
         mesh.normal_indices,
         mesh.vert_colors,
-        mesh.mtl_file,
-        None if len(mesh.mtl_names) < 1 else mesh.mtl_names[0],
+        mtl_path,
+        mesh.mtls,
+        mesh.mtl_per_faces
     )
 
 
