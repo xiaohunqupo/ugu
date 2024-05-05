@@ -22,10 +22,10 @@ class ObjMtl:
         if len(self.Kd) == 3:
             mtl_str += f"Kd {self.Kd[0]} {self.Kd[1]} {self.Kd[2]}\n"
         if len(self.Ks) == 3:
-            mtl_str += f"Ka {self.Ks[0]} {self.Ks[1]} {self.Ks[2]}\n"
+            mtl_str += f"Ks {self.Ks[0]} {self.Ks[1]} {self.Ks[2]}\n"
         mtl_str += f"Tr {self.Tr}\n"
-        mtl_str += f"Tr {self.illum}\n"
-        mtl_str += f"Tr {self.Ns}\n"
+        mtl_str += f"illum {self.illum}\n"
+        mtl_str += f"Ns {self.Ns}\n"
         if self.map_Kd is not None and len(self.map_Kd) > 0:
             mtl_str += f"map_Kd {self.map_Kd}\n"
         return mtl_str
@@ -279,6 +279,9 @@ def saveObjSimple(
     f_out.write("# Faces: %s\n" % (len(indices)))
     f_out.write("#\n")
     f_out.write("####\n")
+    if mtl_path != "":
+        mtl_file_name = Path(mtl_path).name
+        f_out.write(f"mtllib {mtl_file_name}\n")
     for vi, v in enumerate(verts):
         vertstr = "v %s %s %s" % (v[0], v[1], v[2])
         if len(vert_colors) > 0:
