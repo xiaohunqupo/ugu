@@ -14,6 +14,7 @@
 #include "ugu/texturing/texture_mapper.h"
 #include "ugu/texturing/vertex_colorizer.h"
 #include "ugu/texturing/visibility_tester.h"
+#include "ugu/timer.h"
 #include "ugu/util/raster_util.h"
 #include "ugu/util/string_util.h"
 
@@ -132,23 +133,51 @@ int main(int argc, char* argv[]) {
     output_mesh->set_materials(mats);
   }
 
+  ugu::Timer timer;
+
   tmoption.uv_type = ugu::TexturingOutputUvType::kUseOriginalMeshUv;
+  timer.Start();
   ugu::TextureMapping(keyframes, info, output_mesh.get(), tmoption);
+  timer.End();
+  ugu::LOGI("kUseOriginalMeshUv %f ms\n", timer.elapsed_msec());
   output_mesh->WriteObj(data_dir, "bunny_textured_orguv");
 
   tmoption.uv_type = ugu::TexturingOutputUvType::kGenerateSimpleTile;
+  timer.Start();
   ugu::TextureMapping(keyframes, info, output_mesh.get(), tmoption);
+  timer.End();
+  ugu::LOGI("kGenerateSimpleTile %f ms\n", timer.elapsed_msec());
   output_mesh->WriteObj(data_dir, "bunny_textured_tileuv");
 
-  tmoption.uv_type = ugu::TexturingOutputUvType::kGenerateSimpleTriangles;
+  tmoption.uv_type = ugu::TexturingOutputUvType::kConcatHorizontally;
+  timer.Start();
   ugu::TextureMapping(keyframes, info, output_mesh.get(), tmoption);
+  timer.End();
+  ugu::LOGI("kConcatHorizontally %f ms\n", timer.elapsed_msec());
+  output_mesh->WriteObj(data_dir, "bunny_textured_horizontaluv");
+
+  tmoption.uv_type = ugu::TexturingOutputUvType::kConcatVertically;
+  timer.Start();
+  ugu::TextureMapping(keyframes, info, output_mesh.get(), tmoption);
+  timer.End();
+  ugu::LOGI("kConcatVertically %f ms\n", timer.elapsed_msec());
+  output_mesh->WriteObj(data_dir, "bunny_textured_verticaluv");
+
+  tmoption.uv_type = ugu::TexturingOutputUvType::kGenerateSimpleTriangles;
+  timer.Start();
+  ugu::TextureMapping(keyframes, info, output_mesh.get(), tmoption);
+  timer.End();
+  ugu::LOGI("kGenerateSimpleTriangles %f ms\n", timer.elapsed_msec());
   output_mesh->WriteObj(data_dir, "bunny_textured_triuv");
 
   {
     tmoption.uv_type = ugu::TexturingOutputUvType::kGenerateSimpleCharts;
     tmoption.tex_h = 512;
     tmoption.tex_w = 512;
+    timer.Start();
     ugu::TextureMapping(keyframes, info, output_mesh.get(), tmoption);
+    timer.End();
+    ugu::LOGI("kGenerateSimpleCharts %f ms\n", timer.elapsed_msec());
 
     ugu::Image1b mask = ugu::Image1b::zeros(tmoption.tex_h, tmoption.tex_w);
     ugu::GenerateUvMask(output_mesh->uv(), output_mesh->uv_indices(), mask, 255,

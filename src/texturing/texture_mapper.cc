@@ -59,15 +59,196 @@ bool MakeTiledImage(
   return true;
 }
 
+bool ConcatHorizontally(
+    const std::vector<std::shared_ptr<ugu::Keyframe>>& keyframes,
+    ugu::Image3b& concat) {
+  int org_w = keyframes[0]->color.cols;
+  int org_h = keyframes[0]->color.rows;
+  int tex_w = keyframes[0]->color.cols * static_cast<int>(keyframes.size());
+  int tex_h = keyframes[0]->color.rows;
+
+  concat = ugu::Image3b::zeros(tex_h, tex_w);
+
+  for (int i = 0; i < static_cast<int>(keyframes.size()); i++) {
+    int tex_pos_x = i;
+
+    unsigned char* base_adr = concat.data + tex_pos_x * org_w * 3;
+
+    // copy per line
+    for (int j = 0; j < org_h; j++) {
+      std::memcpy(base_adr + tex_w * 3 * (j),
+                  keyframes[i]->color.data + org_w * 3 * j, org_w * 3);
+    }
+  }
+
+  return true;
+}
+
+bool ConcatVertically(
+    const std::vector<std::shared_ptr<ugu::Keyframe>>& keyframes,
+    ugu::Image3b& concat) {
+  int org_w = keyframes[0]->color.cols;
+  int org_h = keyframes[0]->color.rows;
+  int tex_w = keyframes[0]->color.cols;
+  int tex_h = keyframes[0]->color.rows * static_cast<int>(keyframes.size());
+
+  concat = ugu::Image3b::zeros(tex_h, tex_w);
+
+  // copy per image
+  for (int i = 0; i < static_cast<int>(keyframes.size()); i++) {
+    unsigned char* base_adr = concat.data + org_w * org_h * 3 * i;
+    std::memcpy(base_adr, keyframes[i]->color.data, org_w * org_h * 3);
+  }
+
+  return true;
+}
+
+bool ConcatHorizontallyTextureAndUv(
+    const std::vector<std::shared_ptr<ugu::Keyframe>>& keyframes,
+    const ugu::VisibilityInfo& info, ugu::Mesh* mesh,
+    const ugu::TextureMappingOption& option,
+    const std::vector<ugu::FaceInfoPerKeyframe>& faceid2bestkf) {
+  // Make tiled image and get tile xy
+  ugu::Image3b texture;
+
+  ConcatHorizontally(keyframes, texture);
+
+  // Convert projected_tri to UV by tile xy
+  std::vector<Eigen::Vector2f> uv;
+  uv.reserve(info.face_info_list.size() * 3);
+  std::vector<Eigen::Vector3i> uv_indices;
+  uv_indices.reserve(info.face_info_list.size());
+  std::unordered_map<int, int> id2index;
+
+  for (int i = 0; i < static_cast<int>(keyframes.size()); i++) {
+    id2index.emplace(keyframes[i]->id, i);
+  }
+
+  int org_w = keyframes[0]->color.cols;
+  int tex_w = keyframes[0]->color.cols * static_cast<int>(keyframes.size());
+  int tex_h = keyframes[0]->color.rows;
+
+  for (int i = 0; i < static_cast<int>(info.face_info_list.size()); i++) {
+    // Get corresponding kf_id, index and projected_tri
+    const auto& bestkf = faceid2bestkf[i];
+    std::array<Eigen::Vector2f, 3> texture_tri, uv_tri;
+    if (bestkf.kf_id < 0) {
+      // face is not visible, set invalid value
+      std::fill(uv_tri.begin(), uv_tri.end(), Eigen::Vector2f::Zero());
+
+    } else {
+      // Calc image position on tiled image
+      int tile_pos_x = id2index[bestkf.kf_id];
+      int tex_pos_x = tile_pos_x * org_w;
+      for (int j = 0; j < 3; j++) {
+        texture_tri[j].x() = bestkf.projected_tri[j].x() + tex_pos_x;
+        texture_tri[j].y() = bestkf.projected_tri[j].y();
+
+        // Convert to 0-1 UV
+        uv_tri[j].x() = (texture_tri[j].x() + 0.5f) / tex_w;
+        uv_tri[j].y() = 1.0f - ((texture_tri[j].y() + 0.5f) / tex_h);
+      }
+    }
+    uv.push_back(uv_tri[0]);
+    uv.push_back(uv_tri[1]);
+    uv.push_back(uv_tri[2]);
+
+    int uv_size = static_cast<int>(uv.size());
+    uv_indices.push_back(
+        Eigen::Vector3i(uv_size - 3, uv_size - 2, uv_size - 1));
+  }
+
+  mesh->set_uv(uv);
+  mesh->set_uv_indices(uv_indices);
+
+  std::vector<ugu::ObjMaterial> materials(1);
+  materials[0].name = option.texture_base_name;
+  materials[0].diffuse_tex = texture;
+  mesh->set_materials(materials);
+
+  std::vector<int> material_ids(mesh->vertex_indices().size(), 0);
+  mesh->set_material_ids(material_ids);
+
+  return true;
+}
+
+bool ConcatVerticallyTextureAndUv(
+    const std::vector<std::shared_ptr<ugu::Keyframe>>& keyframes,
+    const ugu::VisibilityInfo& info, ugu::Mesh* mesh,
+    const ugu::TextureMappingOption& option,
+    const std::vector<ugu::FaceInfoPerKeyframe>& faceid2bestkf) {
+  // Make tiled image and get tile xy
+  ugu::Image3b texture;
+
+  ConcatVertically(keyframes, texture);
+
+  // Convert projected_tri to UV by tile xy
+  std::vector<Eigen::Vector2f> uv;
+  uv.reserve(info.face_info_list.size() * 3);
+  std::vector<Eigen::Vector3i> uv_indices;
+  uv_indices.reserve(info.face_info_list.size());
+  std::unordered_map<int, int> id2index;
+
+  for (int i = 0; i < static_cast<int>(keyframes.size()); i++) {
+    id2index.emplace(keyframes[i]->id, i);
+  }
+
+  int org_h = keyframes[0]->color.rows;
+  int tex_w = keyframes[0]->color.cols;
+  int tex_h = keyframes[0]->color.rows * static_cast<int>(keyframes.size());
+
+  float inv_tex_w = 1.f / static_cast<float>(tex_w);
+  float inv_tex_h = 1.f / static_cast<float>(tex_h);
+
+  for (int i = 0; i < static_cast<int>(info.face_info_list.size()); i++) {
+    // Get corresponding kf_id, index and projected_tri
+    const auto& bestkf = faceid2bestkf[i];
+    std::array<Eigen::Vector2f, 3> texture_tri, uv_tri;
+    if (bestkf.kf_id < 0) {
+      // face is not visible, set invalid value
+      std::fill(uv_tri.begin(), uv_tri.end(), Eigen::Vector2f::Zero());
+
+    } else {
+      // Calc image position on tiled image
+      int tile_pos_y = id2index[bestkf.kf_id];
+      int tex_pos_y = tile_pos_y * org_h;
+      for (int j = 0; j < 3; j++) {
+        texture_tri[j].x() = bestkf.projected_tri[j].x();
+        texture_tri[j].y() = bestkf.projected_tri[j].y() + tex_pos_y;
+
+        // Convert to 0-1 UV
+        uv_tri[j].x() = (texture_tri[j].x() + 0.5f) * inv_tex_w;
+        uv_tri[j].y() = 1.0f - ((texture_tri[j].y() + 0.5f) * inv_tex_h);
+      }
+    }
+    uv.push_back(uv_tri[0]);
+    uv.push_back(uv_tri[1]);
+    uv.push_back(uv_tri[2]);
+
+    int uv_size = static_cast<int>(uv.size());
+    uv_indices.push_back(
+        Eigen::Vector3i(uv_size - 3, uv_size - 2, uv_size - 1));
+  }
+
+  mesh->set_uv(uv);
+  mesh->set_uv_indices(uv_indices);
+
+  std::vector<ugu::ObjMaterial> materials(1);
+  materials[0].name = option.texture_base_name;
+  materials[0].diffuse_tex = texture;
+  mesh->set_materials(materials);
+
+  std::vector<int> material_ids(mesh->vertex_indices().size(), 0);
+  mesh->set_material_ids(material_ids);
+
+  return true;
+}
+
 bool GenerateSimpleTileTextureAndUv(
     const std::vector<std::shared_ptr<ugu::Keyframe>>& keyframes,
     const ugu::VisibilityInfo& info, ugu::Mesh* mesh,
     const ugu::TextureMappingOption& option,
-    const std::unordered_map<int, std::vector<ugu::FaceInfoPerKeyframe>>&
-        bestkfid2faceid,
     const std::vector<ugu::FaceInfoPerKeyframe>& faceid2bestkf) {
-  (void)bestkfid2faceid;
-
   // Make tiled image and get tile xy
   ugu::Image3b texture;
 
@@ -82,7 +263,9 @@ bool GenerateSimpleTileTextureAndUv(
 
   // Convert projected_tri to UV by tile xy
   std::vector<Eigen::Vector2f> uv;
+  uv.reserve(info.face_info_list.size() * 3);
   std::vector<Eigen::Vector3i> uv_indices;
+  uv_indices.reserve(info.face_info_list.size());
   std::unordered_map<int, int> id2index;
 
   for (int i = 0; i < static_cast<int>(keyframes.size()); i++) {
@@ -295,11 +478,8 @@ bool GenerateTextureOnOriginalUv(
     const std::vector<std::shared_ptr<ugu::Keyframe>>& keyframes,
     const ugu::VisibilityInfo& info, ugu::Mesh* mesh,
     const ugu::TextureMappingOption& option,
-    const std::unordered_map<int, std::vector<ugu::FaceInfoPerKeyframe>>&
-        bestkfid2faceid,
-    const std::vector<ugu::FaceInfoPerKeyframe>& faceid2bestkf) {
-  (void)bestkfid2faceid;
 
+    const std::vector<ugu::FaceInfoPerKeyframe>& faceid2bestkf) {
   ugu::Image3b texture = ugu::Image3b::zeros(option.tex_h, option.tex_w);
   ugu::Image1b mask = ugu::Image1b::zeros(option.tex_h, option.tex_w);
 
@@ -348,11 +528,7 @@ bool GenerateSimpleTrianglesTextureAndUv(
     const std::vector<std::shared_ptr<ugu::Keyframe>>& keyframes,
     const ugu::VisibilityInfo& info, ugu::Mesh* mesh,
     const ugu::TextureMappingOption& option,
-    const std::unordered_map<int, std::vector<ugu::FaceInfoPerKeyframe>>&
-        bestkfid2faceid,
     const std::vector<ugu::FaceInfoPerKeyframe>& faceid2bestkf) {
-  (void)bestkfid2faceid;
-
   // Padding must be at least 2
   // to pad right/left and up/down
   const int padding_tri = 2;
@@ -817,11 +993,8 @@ bool GenerateSimpleChartsTextureAndUv(
     const std::vector<std::shared_ptr<ugu::Keyframe>>& keyframes,
     const ugu::VisibilityInfo& info, ugu::Mesh* mesh,
     const ugu::TextureMappingOption& option,
-    const std::unordered_map<int, std::vector<ugu::FaceInfoPerKeyframe>>&
-        bestkfid2faceid,
     const std::vector<ugu::FaceInfoPerKeyframe>& faceid2bestkf) {
   (void)info;
-  (void)bestkfid2faceid;
 
   ugu::Timer<> timer;
   timer.Start();
@@ -925,35 +1098,11 @@ bool TextureMappingSimple(
     const std::vector<std::shared_ptr<ugu::Keyframe>>& keyframes,
     const ugu::VisibilityInfo& info, ugu::Mesh* mesh,
     const ugu::TextureMappingOption& option) {
-  // Init
-  std::unordered_map<int, std::vector<ugu::FaceInfoPerKeyframe>>
-      bestkfid2faceid;
-  for (int i = 0; i < static_cast<int>(keyframes.size()); i++) {
-    bestkfid2faceid.emplace(keyframes[i]->id,
-                            std::vector<ugu::FaceInfoPerKeyframe>());
-  }
+  // TODO: Slow (approx. 1ms)
   std::vector<ugu::FaceInfoPerKeyframe> faceid2bestkf(
       info.face_info_list.size());
-
-  std::function<ugu::FaceInfoPerKeyframe(const ugu::FaceInfo&)> get_best_kfid;
-  if (option.criteria == ugu::ViewSelectionCriteria::kMinViewingAngle) {
-    get_best_kfid = [](const ugu::FaceInfo& info) -> ugu::FaceInfoPerKeyframe {
-      return info.visible_keyframes[info.min_viewing_angle_index];
-    };
-  } else if (option.criteria == ugu::ViewSelectionCriteria::kMinDistance) {
-    get_best_kfid = [](const ugu::FaceInfo& info) -> ugu::FaceInfoPerKeyframe {
-      return info.visible_keyframes[info.min_distance_index];
-    };
-  } else if (option.criteria == ugu::ViewSelectionCriteria::kMaxArea) {
-    get_best_kfid = [](const ugu::FaceInfo& info) -> ugu::FaceInfoPerKeyframe {
-      return info.visible_keyframes[info.max_area_index];
-    };
-  } else {
-    ugu::LOGE("ViewSelectionCriteria %d is not implemented\n", option.criteria);
-    return false;
-  }
-
   // Select the best kf_id for each face in iterms of criteria
+  // #pragma omp parallel for
   for (int i = 0; i < static_cast<int>(info.face_info_list.size()); i++) {
     const auto& face_info = info.face_info_list[i];
 
@@ -964,24 +1113,29 @@ bool TextureMappingSimple(
     }
 
     // Get the best kf id and projected_tri
-    ugu::FaceInfoPerKeyframe bestkf = get_best_kfid(face_info);
-    bestkfid2faceid[bestkf.kf_id].push_back(bestkf);
-    faceid2bestkf[i] = bestkf;
+    if (option.criteria == ugu::ViewSelectionCriteria::kMinViewingAngle) {
+      faceid2bestkf[i] =
+          face_info.visible_keyframes[face_info.min_viewing_angle_index];
+    } else if (option.criteria == ugu::ViewSelectionCriteria::kMinDistance) {
+      faceid2bestkf[i] =
+          face_info.visible_keyframes[face_info.min_distance_index];
+    } else if (option.criteria == ugu::ViewSelectionCriteria::kMaxArea) {
+      faceid2bestkf[i] = face_info.visible_keyframes[face_info.max_area_index];
+    }
   }
-
   bool ret_tex_gen = false;
   if (option.uv_type == ugu::TexturingOutputUvType::kGenerateSimpleTile) {
-    ret_tex_gen = GenerateSimpleTileTextureAndUv(
-        keyframes, info, mesh, option, bestkfid2faceid, faceid2bestkf);
+    ret_tex_gen = GenerateSimpleTileTextureAndUv(keyframes, info, mesh, option,
+                                                 faceid2bestkf);
   } else if (option.uv_type ==
              ugu::TexturingOutputUvType::kGenerateSimpleTriangles) {
-    ret_tex_gen = GenerateSimpleTrianglesTextureAndUv(
-        keyframes, info, mesh, option, bestkfid2faceid, faceid2bestkf);
+    ret_tex_gen = GenerateSimpleTrianglesTextureAndUv(keyframes, info, mesh,
+                                                      option, faceid2bestkf);
 
   } else if (option.uv_type ==
              ugu::TexturingOutputUvType::kGenerateSimpleCharts) {
-    ret_tex_gen = GenerateSimpleChartsTextureAndUv(
-        keyframes, info, mesh, option, bestkfid2faceid, faceid2bestkf);
+    ret_tex_gen = GenerateSimpleChartsTextureAndUv(keyframes, info, mesh,
+                                                   option, faceid2bestkf);
 
   } else if (option.uv_type == ugu::TexturingOutputUvType::kUseOriginalMeshUv) {
     if (mesh->uv().empty() ||
@@ -992,8 +1146,15 @@ bool TextureMappingSimple(
       return false;
     }
     ret_tex_gen = GenerateTextureOnOriginalUv(keyframes, info, mesh, option,
-                                              bestkfid2faceid, faceid2bestkf);
+                                              faceid2bestkf);
 
+  } else if (option.uv_type ==
+             ugu::TexturingOutputUvType::kConcatHorizontally) {
+    ret_tex_gen = ConcatHorizontallyTextureAndUv(keyframes, info, mesh, option,
+                                                 faceid2bestkf);
+  } else if (option.uv_type == ugu::TexturingOutputUvType::kConcatVertically) {
+    ret_tex_gen = ConcatVerticallyTextureAndUv(keyframes, info, mesh, option,
+                                               faceid2bestkf);
   } else {
     ugu::LOGE("OutputUvType %d is not implemented\n", option.uv_type);
     return false;

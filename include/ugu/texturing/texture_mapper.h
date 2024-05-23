@@ -15,7 +15,9 @@ enum TexturingOutputUvType {
   kGenerateSimpleTile = 0,
   kUseOriginalMeshUv = 1,
   kGenerateSimpleTriangles = 2,
-  kGenerateSimpleCharts = 3
+  kGenerateSimpleCharts = 3,
+  kConcatHorizontally = 4,
+  kConcatVertically = 5,
 };
 
 struct TextureMappingOption {
