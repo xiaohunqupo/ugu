@@ -82,7 +82,7 @@ class VoxelGrid {
   std::vector<Voxel> voxels_;
   Eigen::Vector3f bb_max_;
   Eigen::Vector3f bb_min_;
-  float resolution_{-1.0f};
+  Eigen::Vector3f resolution_{-1.f, -1.f, -1.f};
   Eigen::Vector3i voxel_num_{0, 0, 0};
   int xy_slice_num_{0};
 
@@ -96,11 +96,13 @@ class VoxelGrid {
   ~VoxelGrid();
   bool Init(const Eigen::Vector3f& bb_max, const Eigen::Vector3f& bb_min,
             float resolution);
+  bool Init(const Eigen::Vector3f& bb_max, const Eigen::Vector3f& bb_min,
+            const Eigen::Vector3f& resolution);
   const Eigen::Vector3i& voxel_num() const;
   const Voxel& get(int x, int y, int z) const;
   Voxel* get_ptr(int x, int y, int z);
   std::vector<Voxel>& get_all();
-  float resolution() const;
+  Eigen::Vector3f resolution() const;
   void ResetOnSurface();
   bool initialized() const;
   Eigen::Vector3i get_index(const Eigen::Vector3f& p) const;

@@ -79,7 +79,7 @@ inline void FusePointBase(const Eigen::Vector3f& p, const Eigen::Vector3f& n,
       }
     }
   } else {
-    float step = voxel_grid.resolution();
+    Eigen::Vector3f step = voxel_grid.resolution();
     // Sample along with normal direction
 
 #ifdef ENSURE_UPDATE
@@ -97,7 +97,8 @@ inline void FusePointBase(const Eigen::Vector3f& p, const Eigen::Vector3f& n,
       }
       updated_idxs.insert(voxel_idx_);
 #else
-      const Eigen::Vector3f offset = n * k * step;
+      const Eigen::Vector3f offset =
+          (n * static_cast<float>(k)).cwiseProduct(step);
       const auto& voxel_idx_ = voxel_grid.get_index(p + offset);
 #endif
       if (voxel_idx_[0] < 0 || voxel_idx_[1] < 0 || voxel_idx_[2] < 0) {
@@ -147,8 +148,17 @@ VoxelGrid::~VoxelGrid() {}
 
 bool VoxelGrid::Init(const Eigen::Vector3f& bb_max,
                      const Eigen::Vector3f& bb_min, float resolution) {
-  if (resolution < std::numeric_limits<float>::min()) {
-    LOGE("resolution must be positive %f\n", resolution);
+  return Init(bb_max, bb_min, Eigen::Vector3f::Ones() * resolution);
+}
+
+bool VoxelGrid::Init(const Eigen::Vector3f& bb_max,
+                     const Eigen::Vector3f& bb_min,
+                     const Eigen::Vector3f& resolution) {
+  if (resolution.x() < std::numeric_limits<float>::min() ||
+      resolution.y() < std::numeric_limits<float>::min() ||
+      resolution.z() < std::numeric_limits<float>::min()) {
+    LOGE("resolution must be positive: (%f, %f, %f)\n", resolution.x(),
+         resolution.x(), resolution.z());
     return false;
   }
   if (bb_max.x() <= bb_min.x() || bb_max.y() <= bb_min.y() ||
@@ -164,7 +174,7 @@ bool VoxelGrid::Init(const Eigen::Vector3f& bb_max,
   Eigen::Vector3f diff = bb_max_ - bb_min_;
 
   for (int i = 0; i < 3; i++) {
-    voxel_num_[i] = static_cast<int>(diff[i] / resolution_);
+    voxel_num_[i] = static_cast<int>(diff[i] / resolution_[i]);
   }
 
   if (voxel_num_.x() * voxel_num_.y() * voxel_num_.z() >
@@ -178,7 +188,7 @@ bool VoxelGrid::Init(const Eigen::Vector3f& bb_max,
   voxels_.clear();
   voxels_.resize(voxel_num_.x() * voxel_num_.y() * voxel_num_.z());
 
-  float offset = resolution_ * 0.5f;
+  Eigen::Vector3f offset = resolution_ * 0.5f;
 
   x_pos_list.resize(voxel_num_.x());
   y_pos_list.resize(voxel_num_.y());
@@ -190,19 +200,19 @@ bool VoxelGrid::Init(const Eigen::Vector3f& bb_max,
   for (int z = 0; z < voxel_num_.z(); z++) {
     float z_pos = diff.z() * (static_cast<float>(z) /
                               static_cast<float>(voxel_num_.z())) +
-                  bb_min_.z() + offset;
+                  bb_min_.z() + offset.z();
     z_pos_list[z] = z_pos;
     for (int y = 0; y < voxel_num_.y(); y++) {
       float y_pos = diff.y() * (static_cast<float>(y) /
                                 static_cast<float>(voxel_num_.y())) +
-                    bb_min_.y() + offset;
+                    bb_min_.y() + offset.y();
       if (z == 0) {
         y_pos_list[y] = y_pos;
       }
       for (int x = 0; x < voxel_num_.x(); x++) {
         float x_pos = diff.x() * (static_cast<float>(x) /
                                   static_cast<float>(voxel_num_.x())) +
-                      bb_min_.x() + offset;
+                      bb_min_.x() + offset.x();
 
         if (z == 0 && y == 0) {
           x_pos_list[x] = x_pos;
@@ -239,7 +249,7 @@ Voxel* VoxelGrid::get_ptr(int x, int y, int z) {
 
 std::vector<Voxel>& VoxelGrid::get_all() { return voxels_; }
 
-float VoxelGrid::resolution() const { return resolution_; }
+Eigen::Vector3f VoxelGrid::resolution() const { return resolution_; }
 
 void VoxelGrid::ResetOnSurface() {
   for (Voxel& v : voxels_) {

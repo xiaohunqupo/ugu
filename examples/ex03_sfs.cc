@@ -40,8 +40,7 @@ int main(int argc, char* argv[]) {
   option.bb_max[2] += bb_offset;
 
   // voxel resolution is 10mm
-  option.resolution = 10.0f;
-
+  option.resolution.setConstant(10.0f);
   carver.set_option(option);
 
   carver.Init();

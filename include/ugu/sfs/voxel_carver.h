@@ -19,7 +19,8 @@ namespace ugu {
 struct VoxelCarverOption {
   Eigen::Vector3f bb_max;
   Eigen::Vector3f bb_min;
-  float resolution{0.1f};  // default is 10cm if input is m-scale
+  Eigen::Vector3f resolution{0.1f, 0.1f,
+                             0.1f};  // default is 10cm if input is m-scale
   bool sdf_minmax_normalize{true};
   VoxelUpdateOption update_option;
 };

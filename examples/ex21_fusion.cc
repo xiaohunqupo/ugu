@@ -126,11 +126,12 @@ int main(int argc, char* argv[]) {
 
   {
     ugu::VoxelGrid voxel_grid;
-    float resolution = 10.f;
-    Eigen::Vector3f offset = Eigen::Vector3f::Ones() * resolution * 2;
+    Eigen::Vector3f resolution(10.f, 10.f, 10.f);
+    Eigen::Vector3f offset = resolution * 2;
     voxel_grid.Init(combined->stats().bb_max + offset,
                     combined->stats().bb_min - offset, resolution);
-    ugu::VoxelUpdateOption option = ugu::GenFuseDepthDefaultOption(resolution);
+    ugu::VoxelUpdateOption option =
+        ugu::GenFuseDepthDefaultOption(resolution.minCoeff());
     for (size_t i = 0; i < view_num; i++) {
 #if 0
       ugu::Mesh pc;
