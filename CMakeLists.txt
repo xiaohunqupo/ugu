@@ -546,12 +546,27 @@ if (UGU_BUILD_GUI_APP)
 
   add_executable(mesh_viewer app_gui/mesh_viewer/main.cc ${IMGUI_SOURCES} ${IMGUI_HEADERS} ${IMGUI_GL_SOURCES} ${GLAD_HEADERS} ${GLAD_SOURCES})
   target_include_directories(mesh_viewer PRIVATE ${Ugu_INCLUDE_DIRS} ${IMGUI_INSTALL_DIR} ${IMGUI_INSTALL_DIR}/backends)
-if (WIN32)
-  target_link_libraries(mesh_viewer ${Ugu_LIBS} opengl32)
-else()
-  target_link_libraries(mesh_viewer ${Ugu_LIBS} GL)
-endif()
+
+  if (WIN32)
+    target_link_libraries(mesh_viewer ${Ugu_LIBS} opengl32)
+  else()
+    target_link_libraries(mesh_viewer ${Ugu_LIBS} GL)
+  endif()
+  
   set_property(TARGET mesh_viewer PROPERTY FOLDER ugu_app_gui) 
+
+  add_executable(mesh_viewer_min app_gui/mesh_viewer_min/main.cc ${GLAD_HEADERS} ${GLAD_SOURCES})
+  target_include_directories(mesh_viewer_min PRIVATE ${Ugu_INCLUDE_DIRS})
+  
+  if (WIN32)
+    target_link_libraries(mesh_viewer_min ${Ugu_LIBS} opengl32)
+  else()
+    target_link_libraries(mesh_viewer_min ${Ugu_LIBS} GL)
+  endif()
+  
+  set_property(TARGET mesh_viewer_min PROPERTY FOLDER ugu_app_gui) 
+
+
 endif()
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SOURCE_LIST})
