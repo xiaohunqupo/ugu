@@ -12,6 +12,12 @@
 #include "glad/gl.h"
 
 namespace ugu {
+
+RenderableMesh::RenderableMesh(const Mesh &mesh) : Mesh(mesh) {}
+
+RenderableMesh::RenderableMesh() {}
+RenderableMesh::~RenderableMesh() {}
+
 void RenderableMesh::BindTextures() {
   texture_ids.clear();
   for (size_t i = 0; i < materials().size(); i++) {

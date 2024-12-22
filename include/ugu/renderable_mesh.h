@@ -23,8 +23,17 @@ using RenderableMeshPtr = std::shared_ptr<RenderableMesh>;
 
 class RenderableMesh : public Mesh {
  public:
+
+  RenderableMesh(const Mesh& mesh);
+  RenderableMesh();
+  ~RenderableMesh();
+
   static RenderableMeshPtr Create() {
     return std::make_shared<RenderableMesh>();
+  }
+
+  static RenderableMeshPtr Create(const Mesh& mesh) {
+    return std::make_shared<RenderableMesh>(mesh);
   }
 
   void Draw(const Shader &shader) const;
