@@ -212,7 +212,6 @@ if(UGU_USE_FREETYPE)
   set(Ugu_DEFINES ${Ugu_DEFINES} UGU_USE_FREETYPE)
   set(Freetype_LIBS freetype)
 endif()
-
 ########################################################################
 
 
@@ -263,6 +262,27 @@ if(UGU_USE_OPENMP)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
   endif()
+endif()
+
+option(UGU_USE_CUDA "Use CUDA" OFF)
+message("UGU_USE_CUDA: ${UGU_USE_CUDA}")
+if(UGU_USE_CUDA)
+  if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES 75 86)
+  endif()
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+  if (NOT DEFINED CMAKE_CUDA_STANDARD)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+  endif()
+  set(cuda_flags --expt-relaxed-constexpr)
+  add_library(my_cuda_flags INTERFACE)
+  target_compile_options(my_cuda_flags INTERFACE $<$<COMPILE_LANGUAGE:CUDA>:${cuda_flags}>)
+  set(Ugu_DEFINES ${Ugu_DEFINES} UGU_USE_CUDA)
+  set(UGU_CUDA_SOURCES include/ugu/cuda/cuda_funcs.h src/cuda/cuda_funcs.cc src/cuda/cuda_funcs.cuh src/cuda/cuda_funcs.cu)
+else()
+  set(UGU_CUDA_SOURCES include/ugu/cuda/cuda_funcs.h src/cuda/cuda_funcs.cc)
 endif()
 ########################################################################
 
@@ -435,6 +455,8 @@ set(
   # lodepng
   ${UGU_LODEPNG_SOURCES}
 
+  # CUDA
+  ${UGU_CUDA_SOURCES}
 )
 
 set(Ugu_LIB ugu)
@@ -446,6 +468,16 @@ set(Ugu_LIBS ${Ugu_LIBS} ${Ugu_LIB} ${MvsTexturing_LIBS} ${Freetype_LIBS}) # Thi
 set(SOURCE_LIST ${SOURCE_LIST} ${UGU_SOURCE})
 
 target_compile_definitions(ugu PUBLIC ${Ugu_DEFINES})
+
+if(UGU_USE_CUDA)
+  set(Ugu_LIBS ${Ugu_LIBS} CUDA::cudart)
+  set_target_properties(${Ugu_LIB}
+   PROPERTIES
+       CUDA_SEPARABLE_COMPILATION ON
+       CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  )
+  target_link_libraries(${Ugu_LIB} my_cuda_flags)
+endif()
 
 set_as_cache(Ugu_LIBS "${Ugu_LIBS}" "Ugu_LIBS")
 set_as_cache(Ugu_INCLUDE_DIRS "${Ugu_INCLUDE_DIRS}" "Ugu_INCLUDE_DIRS")

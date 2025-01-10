@@ -7,15 +7,46 @@
 
 #include <fstream>
 
+#include "ugu/cuda/cuda_funcs.h"
 #include "ugu/image.h"
 #include "ugu/image_io.h"
 #include "ugu/image_proc.h"
+#include "ugu/timer.h"
 #include "ugu/util/image_util.h"
 
 // test by bunny data with 6 views
 int main(int argc, char* argv[]) {
   (void)argc;
   (void)argv;
+
+  {
+    ugu::Image3b img = ugu::imread("../data/color_transfer/reference_00.jpg");
+    ugu::Image3b img_org = img.clone();
+    ugu::Timer timer;
+    int kernel = 51;
+    ugu::BoxFilterCuda(img, kernel);
+    ugu::imwrite("box_blur_cuda.jpg", img);
+    img = img_org.clone();
+    timer.Start();
+    for (size_t i = 0; i < 1000; i++) {
+      ugu::BoxFilterCuda(img, kernel);
+    }
+    timer.End();
+    std::cout << "BoxFilterCuda: " << timer.elapsed_msec() << " / "
+              << timer.elapsed_msec() / 1000 << std::endl;
+
+    img = img_org.clone();
+    ugu::BoxFilter(img.clone(), &img, kernel);
+    ugu::imwrite("box_blur_cpu.jpg", img);
+    img = img_org.clone();
+    timer.Start();
+    for (size_t i = 0; i < 1000; i++) {
+      ugu::BoxFilter(img.clone(), &img, kernel);
+    }
+    timer.End();
+    std::cout << "BoxFilter: " << timer.elapsed_msec() << " / "
+              << timer.elapsed_msec() / 1000 << std::endl;
+  }
 
   std::string data_dir = "../data/bunny/";
   std::string mask_path = data_dir + "00000_mask.png";
@@ -52,13 +83,11 @@ int main(int argc, char* argv[]) {
   }
 
   {
-    ugu::ImageBase source =
-        ugu::imread("../data/poisson_blending/source.png");
+    ugu::ImageBase source = ugu::imread("../data/poisson_blending/source.png");
     ugu::ImageBase target = ugu::imread("../data/poisson_blending/target.png");
     ugu::ImageBase mask_ = ugu::imread("../data/poisson_blending/mask.png", 0);
     ugu::Image3b res = ugu::PoissonBlend(mask_, source, target, -35, 35);
     ugu::imwrite("../data/poisson_blending/result.png", res);
-
   }
 
   return 0;
