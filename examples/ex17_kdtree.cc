@@ -16,6 +16,10 @@
 #include "ugu/util/geom_util.h"
 #include "ugu/util/io_util.h"
 
+#if UGU_USE_CUDA
+#include "ugu/cuda/knn.h"
+#endif
+
 namespace {
 
 template <typename T>
@@ -229,11 +233,77 @@ void Test3D() {
   }
 }
 
+#if UGU_USE_CUDA
+void TestGrid() {
+  std::default_random_engine engine;
+  std::uniform_real_distribution<float> dist3d(0.0, 1.0);
+  std::vector<Eigen::Vector3f> points3f;
+  for (int i = 0; i < 5000000; i++) {
+    points3f.push_back({dist3d(engine), dist3d(engine), dist3d(engine)});
+  }
+
+  ugu::KNnGridCuda knngrid;
+  knngrid.SetData(points3f);
+  knngrid.SetVoxelLen(0.01f);
+
+  ugu::Timer timer;
+
+  timer.Start();
+  knngrid.Build();
+  timer.End();
+  ugu::LOGI("KNnGridCuda.Build(): %f msec\n", timer.elapsed_msec());
+
+  std::vector<Eigen::Vector3f> queries;
+  for (int i = 0; i < 2000; i++) {
+    queries.push_back({dist3d(engine), dist3d(engine), dist3d(engine)});
+  }
+
+  timer.Start();
+  uint32_t k = 200;
+  auto results = knngrid.SearchKnn(queries, k);
+  timer.End();
+  ugu::LOGI("KNnGridCuda.SearchKnn(): %f msec\n", timer.elapsed_msec());
+
+  int seed = 0;
+  std::mt19937 mt(seed);
+  std::uniform_int_distribution<int> random_color(0, 255);
+
+  std::vector<Eigen::Vector3f> random_colors(queries.size());
+  for (auto& vc : random_colors) {
+    vc[0] = static_cast<float>(random_color(mt));
+    vc[1] = static_cast<float>(random_color(mt));
+    vc[2] = static_cast<float>(random_color(mt));
+  }
+
+  std::vector<Eigen::Vector3f> vertex_colors(points3f.size(), {0.f, 0.f, 0.f});
+  for (size_t i = 0; i < queries.size(); i++) {
+    for (uint32_t j = 0; j < k; j++) {
+      vertex_colors[results[i][j].index] = random_colors[i];
+    }
+  }
+
+  std::vector<Eigen::Vector3f> vertices = points3f;
+  for (size_t i = 0; i < queries.size(); i++) {
+    vertices.push_back(queries[i]);
+    vertex_colors.push_back(random_colors[i]);
+  }
+
+  ugu::MeshPtr pc = ugu::Mesh::Create();
+  pc->set_vertices(vertices);
+  pc->set_vertex_colors(vertex_colors);
+  pc->WritePly("knngrid.ply");
+}
+#endif
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
   (void)argc;
   (void)argv;
+
+#if UGU_USE_CUDA
+  TestGrid();
+#endif
 
   Test2D();
 

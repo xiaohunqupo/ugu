@@ -2,7 +2,7 @@
 
 #include <iostream>
 
-#include "./cuda_funcs.cuh"
+#include "./image.cuh"
 #include "./helper_cuda.h"
 
 namespace {
@@ -42,9 +42,6 @@ __global__ void BoxFilterShared(const uint8_t* d_in, uint8_t* d_out, int width,
                                 int height, int K) {
   extern __shared__ float tile[];
   // tile uses 3 channels
-  // スレッドブロックが (blockDim.x * blockDim.y) 個のスレッドなら、
-  // シェアードメモリの確保サイズは 3 * blockDim.x * blockDim.y (バイトではない)
-  // になる想定
 
   int tx = threadIdx.x;
   int ty = threadIdx.y;

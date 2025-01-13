@@ -7,7 +7,7 @@
 
 #include <fstream>
 
-#include "ugu/cuda/cuda_funcs.h"
+#include "ugu/cuda/image.h"
 #include "ugu/image.h"
 #include "ugu/image_io.h"
 #include "ugu/image_proc.h"

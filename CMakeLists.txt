@@ -267,10 +267,12 @@ endif()
 option(UGU_USE_CUDA "Use CUDA" OFF)
 message("UGU_USE_CUDA: ${UGU_USE_CUDA}")
 if(UGU_USE_CUDA)
+  include(CheckLanguage)
+  check_language(CUDA)
+  enable_language(CUDA)
   if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
     set(CMAKE_CUDA_ARCHITECTURES 75 86)
   endif()
-  enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
   if (NOT DEFINED CMAKE_CUDA_STANDARD)
     set(CMAKE_CUDA_STANDARD 17)
@@ -281,8 +283,24 @@ if(UGU_USE_CUDA)
   target_compile_options(my_cuda_flags INTERFACE $<$<COMPILE_LANGUAGE:CUDA>:${cuda_flags}>)
   set(Ugu_DEFINES ${Ugu_DEFINES} UGU_USE_CUDA)
   set(UGU_CUDA_SOURCES include/ugu/cuda/cuda_funcs.h src/cuda/cuda_funcs.cc src/cuda/cuda_funcs.cuh src/cuda/cuda_funcs.cu)
+  set(UGU_CUDA_SOURCES
+      include/ugu/cuda/image.h
+      src/cuda/image.cc
+      src/cuda/image.cuh
+      src/cuda/image.cu
+      include/ugu/cuda/knn.h
+      src/cuda/knn.cc
+      src/cuda/knn.cuh
+      src/cuda/knn.cu
+      src/cuda/helper_cuda.h
+      src/cuda/helper_string.h 
+  )
 else()
-  set(UGU_CUDA_SOURCES include/ugu/cuda/cuda_funcs.h src/cuda/cuda_funcs.cc)
+  set(UGU_CUDA_SOURCES
+      include/ugu/cuda/image.h
+      src/cuda/image.cc
+      include/ugu/cuda/knn.h
+      src/cuda/knn.cc)
 endif()
 ########################################################################
 
