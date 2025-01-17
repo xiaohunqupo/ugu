@@ -295,6 +295,7 @@ if(UGU_USE_CUDA)
       src/cuda/helper_cuda.h
       src/cuda/helper_string.h 
   )
+  set(Ugu_INCLUDE_DIRS ${Ugu_INCLUDE_DIRS} ${CUDAToolkit_INCLUDE_DIRS})
 else()
   set(UGU_CUDA_SOURCES
       include/ugu/cuda/image.h

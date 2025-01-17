@@ -151,6 +151,7 @@ bool KNnGridCuda::Impl::Build() {
   checkCudaErrors(cudaMemcpy(m_d_voxel_point_indices,
                              m_h_voxel_point_indices.data(),
                              sizeof(uint32_t) * sum, cudaMemcpyHostToDevice));
+  return true;
 }
 
 std::vector<std::vector<KNnGridSearchResult>> KNnGridCuda::Impl::SearchKnn(

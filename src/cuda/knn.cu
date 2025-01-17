@@ -1,15 +1,14 @@
-#pragma once
-
 #include <cuda_runtime.h>
 
 #include <iostream>
+#include <cfloat>
+#include <cstdint>
 
 #include "./helper_cuda.h"
 #include "./knn.cuh"
 
 namespace {
 
-// CUDAカーネル: 各クエリ点に対するkNN検索
 __global__ void kNNKernel(const Eigen::Vector3f* d_points,
                           const uint32_t* d_voxel_start_indices,
                           const uint32_t* d_voxel_point_indices,
@@ -160,8 +159,6 @@ void SearchKnnCuda(const float* d_data, const uint32_t* d_voxel_start_indices,
                    float* d_knn_dists) {
   int threads = 256;
   int blocks = (num_queries + threads - 1) / threads;
-
-  // kNNカーネルの起動
 
   kNNKernel<<<blocks, threads>>>(
       reinterpret_cast<Eigen::Vector3f*>(const_cast<float*>(d_data)),
