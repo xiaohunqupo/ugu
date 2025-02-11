@@ -384,6 +384,54 @@ TransformationGIcp MinimizeLossGuassNewton(
     Vector6d b = Vector6d::Zero();
     total_error = 0.0;
 
+#if 0
+    // Parallel version but slower...
+    std::vector<MatrixXd> Hs(correspondences.size());
+    std::vector<Vector6d> bs(correspondences.size());
+    std::vector<double> errors(correspondences.size());
+#pragma omp parallel for
+    for (int64_t corr_idx = 0;
+         corr_idx < static_cast<int64_t>(correspondences.size()); corr_idx++) {
+      const auto& corr = correspondences[corr_idx];
+
+      // Compute resigual: r_i = T*p_i - q_i
+      Vector3d src_transed = T.Transform(corr.src);
+      Vector3d r = src_transed - corr.dst;
+
+      // Compute Jacobian: J_i
+      Matrix<double, 3, 6> J_i = ComputeJacobian(corr.src, T.R);
+
+      // Accumulate corresponding covariances ƒ°_i = R * ƒ°_src_i * R^T + ƒ°_dst_i
+      Matrix3d sigma_src_transformed = T.R * corr.src_cov * T.R.transpose();
+      Matrix3d sigma_i = sigma_src_transformed + corr.dst_cov;
+
+#if 0
+      // Add small value to avoid singular matrix
+      double eplison = 1e-2;
+      sigma_i += eplison * Eigen::Matrix3d::Identity();
+#endif
+
+      // Inverse of ƒ°_i
+      Matrix3d W_i = sigma_i.inverse();
+
+      // Accumulate H, approximated Hessian
+      Hs[corr_idx] = J_i.transpose() * W_i * J_i;
+
+      // Accumulate b, gradient vector
+      bs[corr_idx] = J_i.transpose() * W_i * r;
+
+      // Accumulated error
+      errors[corr_idx] = r.transpose() * W_i * r;
+    }
+
+    for (int64_t corr_idx = 0;
+         corr_idx < static_cast<int64_t>(correspondences.size()); corr_idx++) {
+      H += Hs[corr_idx];
+      b += bs[corr_idx];
+      total_error += errors[corr_idx];
+    }
+
+#else
     for (const auto& corr : correspondences) {
       // Compute resigual: r_i = T*p_i - q_i
       Vector3d src_transed = T.Transform(corr.src);
@@ -393,12 +441,17 @@ TransformationGIcp MinimizeLossGuassNewton(
       Matrix<double, 3, 6> J_i = ComputeJacobian(corr.src, T.R);
 
       // Accumulate corresponding covariances ƒ°_i = R * ƒ°_src_i * R^T + ƒ°_dst_i
-      Matrix3d Sigma_src_transformed = T.R * corr.src_cov * T.R.transpose();
-      Matrix3d Sigma_i = Sigma_src_transformed + corr.dst_cov +
-                         Eigen::Matrix3d::Identity() * 0.1;
+      Matrix3d sigma_src_transformed = T.R * corr.src_cov * T.R.transpose();
+      Matrix3d sigma_i = sigma_src_transformed + corr.dst_cov;
+
+#if 0
+      // Add small value to avoid singular matrix
+      double eplison = 1e-2;
+      sigma_i += eplison * Eigen::Matrix3d::Identity();
+#endif
 
       // Inverse of ƒ°_i
-      Matrix3d W_i = Sigma_i.inverse();
+      Matrix3d W_i = sigma_i.inverse();
 
       // Accumulate H, approximated Hessian
       H += J_i.transpose() * W_i * J_i;
@@ -409,6 +462,7 @@ TransformationGIcp MinimizeLossGuassNewton(
       // Accumulated error
       total_error += r.transpose() * W_i * r;
     }
+#endif
 
     // The equation to be solved: H * delta = -b
     Vector6d delta = H.ldlt().solve(-b);
@@ -520,6 +574,7 @@ TransformationGIcpHistory GeneralizedIcpImpl(
       std::vector<Eigen::Vector3d> nn_points;
       for (const auto& r : res) {
         if (static_cast<int64_t>(r.index) == i) {
+          // Ignore itself
           continue;
         }
         nn_points.push_back(src_points[r.index]);
@@ -537,6 +592,7 @@ TransformationGIcpHistory GeneralizedIcpImpl(
       std::vector<Eigen::Vector3d> nn_points;
       for (const auto& r : res) {
         if (static_cast<int64_t>(r.index) == i) {
+          // Ignore itself
           continue;
         }
         nn_points.push_back(dst_points[r.index]);

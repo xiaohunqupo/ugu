@@ -269,7 +269,7 @@ int main() {
   ugu::EnsureDirExists("../out/");
   ugu::EnsureDirExists("../out/ex23/");
 
-  // TestAlignmentWithCorresp();
+  TestAlignmentWithCorresp();
 
   TestAlignmentWithoutCorresp();
 
