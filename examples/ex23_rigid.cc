@@ -161,6 +161,27 @@ void TestAlignmentWithoutCorresp() {
     ugu::IcpCorrespCriteria crc;
     ugu::IcpOutput output;
     timer.Start();
+    tmc.iter_max = 100;
+    auto history =
+        ugu::GeneralizedIcp(noised_mesh.vertices(), bunny.vertices(), {}, {},
+                            tmc, crc, nullptr, -1, nullptr, 20, 20, 1, 1e-2);
+    timer.End();
+    ugu::LOGI("Generalized ICP: %fms\n", timer.elapsed_msec());
+    for (size_t i = 0; i < history.history.size(); i++) {
+      ugu::LOGI("iter %d: %f\n", i, history.history[i].error);
+      noised_mesh = org_noised_mesh;
+      noised_mesh.Transform(history.history[i].R.cast<float>(),
+                            history.history[i].t.cast<float>());
+      noised_mesh.WriteObj(out_dir, "noised_gicp_" + std::to_string(i));
+    }
+  }
+
+  {
+    noised_mesh = org_noised_mesh;
+    ugu::IcpTerminateCriteria tmc;
+    ugu::IcpCorrespCriteria crc;
+    ugu::IcpOutput output;
+    timer.Start();
     ugu::RigidIcp(noised_mesh, bunny, ugu::IcpCorrespType::kPointToPoint,
                   ugu::IcpLossType::kPointToPoint, tmc, crc, output, false);
     timer.End();
@@ -248,7 +269,7 @@ int main() {
   ugu::EnsureDirExists("../out/");
   ugu::EnsureDirExists("../out/ex23/");
 
-  TestAlignmentWithCorresp();
+  // TestAlignmentWithCorresp();
 
   TestAlignmentWithoutCorresp();
 

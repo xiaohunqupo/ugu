@@ -115,4 +115,53 @@ bool RigidIcp(const Mesh& src, const Mesh& dst,
               CorrespFinderPtr corresp_finder = nullptr, int num_theads = -1,
               IcpCallbackFunc callback = nullptr, uint32_t approx_nn_num = 10);
 
+struct TransformationGIcp {
+  Eigen::Matrix3d R;
+  Eigen::Vector3d t;
+  double error;
+
+  TransformationGIcp();
+  ~TransformationGIcp();
+
+  Eigen::Vector3d Transform(const Eigen::Vector3d& p) const;
+
+  void Update(const Eigen::Matrix<double, 6, 1>& delta);
+};
+
+struct TransformationGIcpHistory {
+  std::vector<TransformationGIcp> history;
+  TransformationGIcp accumlated;
+  TransformationGIcpHistory();
+  ~TransformationGIcpHistory();
+  void Update(const TransformationGIcp& latest);
+};
+
+TransformationGIcpHistory GeneralizedIcp(
+    const std::vector<Eigen::Vector3f>& src_points,
+    const std::vector<Eigen::Vector3f>& dst_points,
+    const std::vector<Eigen::Matrix3f>& src_covs =
+        std::vector<Eigen::Matrix3f>(),
+    const std::vector<Eigen::Matrix3f>& dst_covs =
+        std::vector<Eigen::Matrix3f>(),
+    const IcpTerminateCriteria& terminate_criteria = IcpTerminateCriteria(),
+    const IcpCorrespCriteria& corresp_criateria = IcpCorrespCriteria(),
+    KdTreePtr<double, 3> kdtree = nullptr, int num_theads = -1,
+    IcpCallbackFunc callback = nullptr, uint32_t nn_num = 20,
+    uint32_t cov_nn_num = 20, uint32_t minimize_max_iterations = 100,
+    double minimize_tolerance = 1e-6);
+
+TransformationGIcpHistory GeneralizedIcp(
+    const std::vector<Eigen::Vector3d>& src_points,
+    const std::vector<Eigen::Vector3d>& dst_points,
+    const std::vector<Eigen::Matrix3d>& src_covs =
+        std::vector<Eigen::Matrix3d>(),
+    const std::vector<Eigen::Matrix3d>& dst_covs =
+        std::vector<Eigen::Matrix3d>(),
+    const IcpTerminateCriteria& terminate_criteria = IcpTerminateCriteria(),
+    const IcpCorrespCriteria& corresp_criateria = IcpCorrespCriteria(),
+    KdTreePtr<double, 3> kdtree = nullptr, int num_theads = -1,
+    IcpCallbackFunc callback = nullptr, uint32_t nn_num = 20,
+    uint32_t cov_nn_num = 20, uint32_t minimize_max_iterations = 100,
+    double minimize_tolerance = 1e-6);
+
 }  // namespace ugu

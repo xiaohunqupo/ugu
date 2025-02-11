@@ -335,6 +335,284 @@ void DecomposeRtsImpl(const Eigen::Transform<Scalar, 3, Eigen::Affine>& T,
   s[2] = mat.template block<3, 1>(0, 2).norm();
 }
 
+using namespace Eigen;
+using Matrix6d = Eigen::Matrix<double, 6, 6>;
+using Vector6d = Eigen::Matrix<double, 6, 1>;
+using MatrixXd6x = Eigen::MatrixXd;
+using Vector3d = Eigen::Vector3d;
+using Matrix3d = Eigen::Matrix3d;
+
+struct CorrespondenceGIcp {
+  Vector3d src;
+  Matrix3d src_cov;
+  Vector3d dst;
+  Matrix3d dst_cov;
+  CorrespondenceGIcp() {
+    src = Vector3d::Constant(std::numeric_limits<double>::max());
+    src_cov = Matrix3d::Constant(std::numeric_limits<double>::max());
+    dst = Vector3d::Constant(std::numeric_limits<double>::max());
+    dst_cov = Matrix3d::Constant(std::numeric_limits<double>::max());
+  }
+};
+
+Eigen::Matrix<double, 3, 6> ComputeJacobian(const Eigen::Vector3d& p,
+                                            const Eigen::Matrix3d& R) {
+  Matrix3d skew_p;
+  skew_p << 0, -p.z(), p.y(), p.z(), 0, -p.x(), -p.y(), p.x(), 0;
+
+  Matrix<double, 3, 6> J;
+  J.block<3, 3>(0, 0) = -R * skew_p;
+#if 1
+  // R is correct in this implementation
+  J.block<3, 3>(0, 3) = R;
+#else
+  J.block<3, 3>(0, 3) = Eigen::Matrix3d::Identity();
+#endif
+  return J;
+}
+
+TransformationGIcp MinimizeLossGuassNewton(
+    const std::vector<CorrespondenceGIcp>& correspondences,
+    const TransformationGIcp& initial_T, uint32_t max_iterations = 100,
+    double tolerance = 1e-6) {
+  TransformationGIcp T = initial_T;
+  double total_error = 0.0;
+
+  for (uint32_t iter = 0; iter < max_iterations; ++iter) {
+    // Init
+    MatrixXd H = MatrixXd::Zero(6, 6);
+    Vector6d b = Vector6d::Zero();
+    total_error = 0.0;
+
+    for (const auto& corr : correspondences) {
+      // Compute resigual: r_i = T*p_i - q_i
+      Vector3d src_transed = T.Transform(corr.src);
+      Vector3d r = src_transed - corr.dst;
+
+      // Compute Jacobian: J_i
+      Matrix<double, 3, 6> J_i = ComputeJacobian(corr.src, T.R);
+
+      // Accumulate corresponding covariances ƒ°_i = R * ƒ°_src_i * R^T + ƒ°_dst_i
+      Matrix3d Sigma_src_transformed = T.R * corr.src_cov * T.R.transpose();
+      Matrix3d Sigma_i = Sigma_src_transformed + corr.dst_cov +
+                         Eigen::Matrix3d::Identity() * 0.1;
+
+      // Inverse of ƒ°_i
+      Matrix3d W_i = Sigma_i.inverse();
+
+      // Accumulate H, approximated Hessian
+      H += J_i.transpose() * W_i * J_i;
+
+      // Accumulate b, gradient vector
+      b += J_i.transpose() * W_i * r;
+
+      // Accumulated error
+      total_error += r.transpose() * W_i * r;
+    }
+
+    // The equation to be solved: H * delta = -b
+    Vector6d delta = H.ldlt().solve(-b);
+
+    // Update
+    T.Update(delta);
+
+    if (delta.norm() < tolerance) {
+      // std::cout << "Converged at iteration " << iter + 1 << std::endl;
+      break;
+    }
+
+    // std::cout << "Iteration " << iter + 1 << ": Error = " << total_error
+    //           << ", Delta norm = " << delta.norm() << std::endl;
+  }
+  T.error = total_error;
+
+  return T;
+}
+
+Eigen::Matrix3d ComputeCovariance(const std::vector<Eigen::Vector3d>& data) {
+#if 1
+  // Compute stride, considering padding for alignment
+  // For example, if Eigen::Vector3d is aligned, the stride may be 4 instead of
+  // 3
+  const ptrdiff_t stride = sizeof(Eigen::Vector3d) / sizeof(double);
+
+  // With strieded Eigen::Map, map vector onto Eigen::Matrix without copying
+  Eigen::Map<const Eigen::Matrix<double, 3, Eigen::Dynamic>, 0,
+             Eigen::OuterStride<>>
+      mat(reinterpret_cast<const double*>(data.data()), 3, data.size(),
+          Eigen::OuterStride<>(stride));
+
+  // Compute the mean of each dimension (mean of each row)
+  Eigen::Vector3d mean = mat.rowwise().mean();
+
+  // Centering by subtracting the mean from each sample
+  Eigen::Matrix<double, 3, Eigen::Dynamic> centered = mat.colwise() - mean;
+
+  // unbiased estimation of covariance matrix
+  Eigen::Matrix3d covariance =
+      (centered * centered.transpose()) / static_cast<double>(data.size() - 1);
+
+  return covariance;
+#else
+
+  size_t n = data.size();
+  if (n == 0) {
+    throw std::runtime_error("");
+  }
+  // Compute mean vector
+  Eigen::Vector3d mean = Eigen::Vector3d::Zero();
+  for (const auto& vec : data) {
+    mean += vec;
+  }
+  mean /= static_cast<double>(n);
+
+  // Initialize covariance matrix
+  Eigen::Matrix3d covariance = Eigen::Matrix3d::Zero();
+
+  // Compute covariance matrix using deviation vectors
+  for (const auto& vec : data) {
+    Eigen::Vector3d deviation = vec - mean;
+    covariance += deviation * deviation.transpose();
+  }
+
+  // Divide by n-1 for sample covariance matrix (unbiased variance)
+  covariance /= static_cast<double>(n - 1);
+
+  return covariance;
+#endif
+}
+
+TransformationGIcpHistory GeneralizedIcpImpl(
+    const std::vector<Eigen::Vector3d>& src_points,
+    const std::vector<Eigen::Vector3d>& dst_points,
+    const std::vector<Eigen::Matrix3d>& src_covs_,
+    const std::vector<Eigen::Matrix3d>& dst_covs_,
+    const IcpTerminateCriteria& terminate_criteria,
+    const IcpCorrespCriteria& corresp_criateria,
+    KdTreePtr<double, 3> kdtree = nullptr, int num_theads = -1,
+    IcpCallbackFunc callback = nullptr, uint32_t nn_num = 20,
+    uint32_t cov_nn_num = 20, uint32_t minimize_max_iterations = 100,
+    double minimize_tolerance = 1e-6) {
+  // TODO; Use num_theads
+  (void)num_theads;
+
+  TransformationGIcpHistory history;
+
+  if (kdtree == nullptr || !kdtree->IsInitialized()) {
+    kdtree = GetDefaultKdTree<double, 3>();
+    kdtree->SetData(dst_points);
+    if (!kdtree->Build()) {
+      return history;
+    }
+  }
+
+  // Compuate covariance matices
+  std::vector<Eigen::Matrix3d> src_covs = src_covs_;
+  if (src_covs.size() != src_points.size()) {
+    KdTreePtr<double, 3> src_kdtree = GetDefaultKdTree<double, 3>();
+    src_kdtree->SetData(src_points);
+    src_kdtree->Build();
+    src_covs.resize(src_points.size());
+#pragma omp parallel for
+    for (int64_t i = 0; i < static_cast<int64_t>(src_points.size()); i++) {
+      KdTreeSearchResults res =
+          src_kdtree->SearchKnn(src_points[i], cov_nn_num);
+      std::vector<Eigen::Vector3d> nn_points;
+      for (const auto& r : res) {
+        if (static_cast<int64_t>(r.index) == i) {
+          continue;
+        }
+        nn_points.push_back(src_points[r.index]);
+      }
+      src_covs[i] = ComputeCovariance(nn_points);
+    }
+  }
+
+  std::vector<Eigen::Matrix3d> dst_covs = dst_covs_;
+  if (dst_covs.size() != dst_points.size()) {
+    dst_covs.resize(dst_points.size());
+#pragma omp parallel for
+    for (int64_t i = 0; i < static_cast<int64_t>(dst_points.size()); i++) {
+      KdTreeSearchResults res = kdtree->SearchKnn(dst_points[i], cov_nn_num);
+      std::vector<Eigen::Vector3d> nn_points;
+      for (const auto& r : res) {
+        if (static_cast<int64_t>(r.index) == i) {
+          continue;
+        }
+        nn_points.push_back(dst_points[r.index]);
+      }
+      dst_covs[i] = ComputeCovariance(nn_points);
+    }
+  }
+
+  int iter = 1;
+  while (true) {
+    // 1. Correspondence Estimation
+    std::vector<size_t> corresp_indices(src_points.size(),
+                                        std::numeric_limits<size_t>::max());
+
+#pragma omp parallel for
+    for (int64_t i = 0; i < static_cast<int64_t>(src_points.size()); ++i) {
+      Eigen::Vector3d src_transed =
+          history.accumlated.R * src_points[i] + history.accumlated.t;
+      KdTreeSearchResults res = kdtree->SearchKnn(src_transed, nn_num);
+
+      for (size_t j = 0; j < res.size(); j++) {
+        double dist = (src_transed - dst_points[res[j].index]).norm();
+        if (corresp_criateria.dist_th > 0 && dist > corresp_criateria.dist_th) {
+          continue;
+        }
+        corresp_indices[i] = res[j].index;
+        break;
+      }
+    }
+
+    std::vector<CorrespondenceGIcp> correspondences;
+    for (size_t i = 0; i < corresp_indices.size(); ++i) {
+      if (corresp_indices[i] != std::numeric_limits<size_t>::max()) {
+        CorrespondenceGIcp c;
+        c.src = src_points[i];
+        c.src_cov = src_covs[i];
+        c.dst = dst_points[corresp_indices[i]];
+        c.dst_cov = dst_covs[corresp_indices[i]];
+        correspondences.push_back(c);
+      }
+    }
+
+    // 2. Gauss-Newton Optimization
+    TransformationGIcp initial_T = history.accumlated;
+    TransformationGIcp T =
+        MinimizeLossGuassNewton(correspondences, initial_T,
+                                minimize_max_iterations, minimize_tolerance);
+
+    history.Update(T);
+
+    // 3. Check convergence
+    if (T.R.isIdentity() && T.t.isZero()) {
+      break;
+    }
+
+    if (iter >= terminate_criteria.iter_max) {
+      break;
+    }
+
+    if (history.history.back().error < terminate_criteria.loss_min) {
+      break;
+    }
+
+    if (1 < history.history.size() &&
+        std::abs(history.history.back().error -
+                 history.history[history.history.size() - 2].error) <
+            terminate_criteria.loss_eps) {
+      break;
+    }
+
+    iter++;
+  }
+
+  return history;
+}
+
 }  // namespace
 
 // #define UGU_USE_UMEYAMA_FOR_RIGID
@@ -630,6 +908,95 @@ bool RigidIcp(const Mesh& src, const Mesh& dst,
                       loss_type, terminate_criteria, corresp_criteria, output,
                       with_scale, kdtree, corresp_finder, num_theads, callback,
                       approx_nn_num);
+}
+
+TransformationGIcp::TransformationGIcp() {
+  R = Eigen::Matrix3d::Identity();
+  t = Eigen::Vector3d::Zero();
+  error = 0;
+}
+
+TransformationGIcp::~TransformationGIcp() {}
+
+Eigen::Vector3d TransformationGIcp::Transform(const Eigen::Vector3d& p) const {
+  return R * p + t;
+}
+
+void TransformationGIcp::Update(const Eigen::Matrix<double, 6, 1>& delta) {
+  Eigen::Vector3d delta_rot = delta.head<3>();
+  Eigen::Vector3d delta_trans = delta.tail<3>();
+
+  double angle = delta_rot.norm();
+  Eigen::Matrix3d delta_R;
+  if (angle != 0.0) {
+    Eigen::Vector3d axis = delta_rot.normalized();
+    delta_R = Eigen::AngleAxisd(angle, axis).toRotationMatrix();
+  } else {
+    delta_R = Eigen::Matrix3d::Identity();
+  }
+  R = delta_R * R;
+  t += delta_trans;
+}
+
+TransformationGIcpHistory::TransformationGIcpHistory() {
+  accumlated = TransformationGIcp();
+}
+TransformationGIcpHistory::~TransformationGIcpHistory() {}
+void TransformationGIcpHistory::Update(const TransformationGIcp& latest) {
+  history.push_back(latest);
+  accumlated = latest;
+}
+
+TransformationGIcpHistory GeneralizedIcp(
+    const std::vector<Eigen::Vector3f>& src_points,
+    const std::vector<Eigen::Vector3f>& dst_points,
+    const std::vector<Eigen::Matrix3f>& src_covs,
+    const std::vector<Eigen::Matrix3f>& dst_covs,
+    const IcpTerminateCriteria& terminate_criteria,
+    const IcpCorrespCriteria& corresp_criateria, KdTreePtr<double, 3> kdtree,
+    int num_theads, IcpCallbackFunc callback, uint32_t nn_num,
+    uint32_t cov_nn_num, uint32_t minimize_max_iterations,
+    double minimize_tolerance) {
+  std::vector<Eigen::Vector3d> src_points_d(src_points.size());
+  std::vector<Eigen::Vector3d> dst_points_d(dst_points.size());
+  std::vector<Eigen::Matrix3d> src_covs_d(src_covs.size());
+  std::vector<Eigen::Matrix3d> dst_covs_d(dst_covs.size());
+
+  for (size_t i = 0; i < src_points.size(); i++) {
+    src_points_d[i] = src_points[i].cast<double>();
+  }
+  for (size_t i = 0; i < dst_points.size(); i++) {
+    dst_points_d[i] = dst_points[i].cast<double>();
+  }
+
+  for (size_t i = 0; i < src_covs.size(); i++) {
+    src_covs_d[i] = src_covs[i].cast<double>();
+  }
+
+  for (size_t i = 0; i < dst_covs.size(); i++) {
+    dst_covs_d[i] = dst_covs[i].cast<double>();
+  }
+
+  return GeneralizedIcpImpl(src_points_d, dst_points_d, src_covs_d, dst_covs_d,
+                            terminate_criteria, corresp_criateria, kdtree,
+                            num_theads, callback, nn_num, cov_nn_num,
+                            minimize_max_iterations, minimize_tolerance);
+}
+
+TransformationGIcpHistory GeneralizedIcp(
+    const std::vector<Eigen::Vector3d>& src_points,
+    const std::vector<Eigen::Vector3d>& dst_points,
+    const std::vector<Eigen::Matrix3d>& src_covs,
+    const std::vector<Eigen::Matrix3d>& dst_covs,
+    const IcpTerminateCriteria& terminate_criteria,
+    const IcpCorrespCriteria& corresp_criateria, KdTreePtr<double, 3> kdtree,
+    int num_theads, IcpCallbackFunc callback, uint32_t nn_num,
+    uint32_t cov_nn_num, uint32_t minimize_max_iterations,
+    double minimize_tolerance) {
+  return GeneralizedIcpImpl(src_points, dst_points, src_covs, dst_covs,
+                            terminate_criteria, corresp_criateria, kdtree,
+                            num_theads, callback, nn_num, cov_nn_num,
+                            minimize_max_iterations, minimize_tolerance);
 }
 
 }  // namespace ugu
