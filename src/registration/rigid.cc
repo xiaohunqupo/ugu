@@ -614,8 +614,8 @@ TransformationGIcpHistory GeneralizedIcpImpl(
       KdTreeSearchResults res = kdtree->SearchKnn(src_transed, nn_num);
 
       for (size_t j = 0; j < res.size(); j++) {
-        double dist = (src_transed - dst_points[res[j].index]).norm();
-        if (corresp_criateria.dist_th > 0 && dist > corresp_criateria.dist_th) {
+        if (corresp_criateria.dist_th > 0 &&
+            res[j].dist > corresp_criateria.dist_th) {
           continue;
         }
         corresp_indices[i] = res[j].index;
@@ -624,6 +624,7 @@ TransformationGIcpHistory GeneralizedIcpImpl(
     }
 
     std::vector<CorrespondenceGIcp> correspondences;
+    correspondences.reserve(corresp_indices.size());
     for (size_t i = 0; i < corresp_indices.size(); ++i) {
       if (corresp_indices[i] != std::numeric_limits<size_t>::max()) {
         CorrespondenceGIcp c;
